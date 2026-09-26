@@ -52,8 +52,8 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-# Key for tracking controller count in CORE.data for ControllerRegistry StaticVector sizing
-KEY_CONTROLLER_REGISTRY_COUNT = "controller_registry_count"
+# Key for the controllers (APIServer, WebServer) that receive entity state updates
+KEY_CONTROLLER_REGISTRY_CONTROLLERS = "controller_registry_controllers"
 
 # CORE.data key for the "is_rp2040 deprecation warning already fired this
 # run" flag. Mirrors the ``cv.only_on_rp2040`` dedupe pattern; cleared
@@ -715,6 +715,7 @@ class EsphomeCore:
         self.defines = set()
         self.platformio_options = {}
         self.loaded_integrations = set()
+        self.loaded_platforms = set()
         self.component_ids = set()
         self.platform_counts = defaultdict(int)
         self.unique_ids = {}
@@ -783,7 +784,8 @@ class EsphomeCore:
         can compare a locally computed hash against the one a device
         advertises. Machine-local data is kept out of the input: build_path
         (which embeds ESPHOME_BUILD_PATH and OS path separators) is excluded,
-        and Path values are dumped relative to the config directory.
+        and Path values are dumped relative to the config directory, with
+        the data directory always at its default ``.esphome`` location.
         """
         if self._config_hash is None:
             from esphome import yaml_util
@@ -794,11 +796,15 @@ class EsphomeCore:
                 esphome_conf = dict(esphome_conf)
                 esphome_conf.pop(CONF_BUILD_PATH, None)
                 config[CONF_ESPHOME] = esphome_conf
+            relative_to = data_dir = None
+            if self.config_path is not None:
+                relative_to, data_dir = self.config_dir, self.data_dir
             config_str = yaml_util.dump(
                 config,
                 show_secrets=True,
                 sort_keys=True,
-                relative_to=self.config_dir if self.config_path is not None else None,
+                relative_to=relative_to,
+                data_dir=data_dir,
             )
             self._config_hash = fnv1a_32bit_hash(config_str)
         return self._config_hash
@@ -1204,10 +1210,9 @@ class EsphomeCore:
         if not self.platform_counts[platform_name]:
             self.platform_counts[platform_name] = 1
 
-    def register_controller(self) -> None:
-        """Track registration of a Controller for ControllerRegistry StaticVector sizing."""
-        controller_count = self.data.setdefault(KEY_CONTROLLER_REGISTRY_COUNT, 0)
-        self.data[KEY_CONTROLLER_REGISTRY_COUNT] = controller_count + 1
+    def register_controller(self, controller: "MockObj") -> None:
+        """Register a controller that receives every entity state update."""
+        self.data.setdefault(KEY_CONTROLLER_REGISTRY_CONTROLLERS, []).append(controller)
 
     @property
     def cpp_main_section(self):

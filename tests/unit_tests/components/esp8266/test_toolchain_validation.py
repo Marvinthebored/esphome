@@ -32,10 +32,9 @@ from esphome.types import ConfigType
 @pytest.fixture(autouse=True)
 def _arduino_toolchain() -> Generator[None]:
     # The suite-wide reset_core fixture clears CORE.toolchain after each test
+    # The decode-tool cache lives in CORE.data, which reset_core clears
     CORE.toolchain = Toolchain.ARDUINO
-    esp8266._DECODE_WARNED_AT.clear()
     yield
-    esp8266._DECODE_WARNED_AT.clear()
 
 
 def _config(
@@ -63,8 +62,10 @@ def test_valid_config_passes() -> None:
 
 
 def test_platformio_toolchain_skips_checks() -> None:
+    # 3.0.2 is pio-legal (>= the global 3.0.0 floor) but below the native
+    # toolchain's own 3.1.1 floor; the bogus board only the native path checks
     CORE.toolchain = Toolchain.PLATFORMIO
-    config = _config(board="not_a_board", version="2.7.4")
+    config = _config(board="not_a_board", version="3.0.2")
     assert _validate_native_toolchain(config) is config
 
 
